@@ -171,7 +171,7 @@ def main():
         train_sampler = None
 
     # define training data loader
-    train_loader = torch.utils .data.DataLoader(
+    train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
