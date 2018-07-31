@@ -26,7 +26,7 @@ import torchvision.models as models
 
 # return sorted list from the items in iterable
 model_names = sorted(name for name in models.__dict__
-                    if name.islower() and not name.startwith("__")
+                    if name.islower() and not name.startswith("__")
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
@@ -149,12 +149,11 @@ def main():
 
         cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not, worse speed
 
-    # define training dataset
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    # load block estimation dataset
+
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])  # imagenet statistics
-
+    '''
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -163,6 +162,12 @@ def main():
             transforms.ToTensor(),  # convert image to tensor
             normalize,
         ]))
+    '''
+
+    data_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
+    csv_dir = data_dir + 'CSV_files/'
+
+
 
     # define sampler for data fetching distributed training
     if args.distributed:
@@ -214,6 +219,8 @@ def main():
             'best_prec1': best_prec1,
             'optimizer': optimizer.state_dict(),  # save optimizer state
         }, is_best, 'checkpoint.pth.tar')
+
+def gen_dataset(params):
 
 
 
