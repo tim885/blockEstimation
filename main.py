@@ -9,6 +9,8 @@ import argparse  # module for user-friendly command-line interfaces
 import os
 import random
 import shutil  # high-level file operations
+import pandas as pd  # easy csv parsing
+import numpy as np
 import time
 import warnings
 
@@ -167,6 +169,16 @@ def main():
     data_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
     csv_dir = data_dir + 'CSV_files/'
 
+    data_opts = {
+        'stepXY': 5,
+        'stepRot': 5,
+        'r_min': 210,
+        'r_max': 510,
+        'trainSize': 4,
+        'valSize': 2,
+    }
+
+    train_dataset = BlockDataset(csv_file=csv_dir, root_dir=data_dir, train=True, data_opts)
 
 
     # define sampler for data fetching distributed training
@@ -219,8 +231,6 @@ def main():
             'best_prec1': best_prec1,
             'optimizer': optimizer.state_dict(),  # save optimizer state
         }, is_best, 'checkpoint.pth.tar')
-
-def gen_dataset(params):
 
 
 
@@ -380,6 +390,29 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k_theta.mul_(100 / batch_size))
 
         return res
+
+
+class BlockDataset(datasets):
+    """block pose estimation dataset"""
+    def __init__(self, csv_file, root_dir, transform=None, train=True, opts):
+        self.samples_attr = pd.read_csv(csv_file)  # all samples' attributes
+        self.root_dir = root_dir
+        self.transform = transform  # preprocessing transforms
+
+        # select samples for training based on class balance strategy
+        if train:
+            block_idx = 0
+            while True:
+                print(block_idx)
+                BlockX = self.samples_attr.iloc[block_idx, ]
+
+
+    def __len__(self):
+        return len(self.samples_attr)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root_dir, self.samples_attr.iloc[idx, 0])
+
 
 
 class AverageMeter(object):
