@@ -7,11 +7,10 @@
 
 import argparse  # module for user-friendly command-line interfaces
 import os
+from skimage import io
 import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
-import numpy as np
-import math
 import time
 import warnings
 
@@ -156,24 +155,18 @@ def main():
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])  # imagenet statistics
-    '''
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),  # fix input size
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),  # convert image to tensor
-            normalize,
-        ]))
-    '''
+
+    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
+                                    transforms.RandomHorizontalFlip(),
+                                    transforms.ToTensor(),  # convert image to tensor
+                                    normalize])
 
     csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
     csv_train = csv_dir + '2018_01_30-10_21-data-5-5-5_train.txt'
     csv_val = csv_dir + '2018_01_30-10_21-data-5-5-5_val.txt'
 
-    train_dataset = BlockDataset(csv_file=csv_train)
-    val_dataset = BlockDataset(csv_file=csv_val)
-
+    train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
+    val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
 
     # define sampler for data fetching distributed training
     if args.distributed:
@@ -188,13 +181,7 @@ def main():
 
     # define validation dataset and loader together
     val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
-        batch_size=args.batch_size, shuffle=False,
+        val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:  # evaluate on val set and end function
@@ -219,7 +206,7 @@ def main():
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
         save_checkpoint({
-            'epoch': epoch +1,
+            'epoch': epoch + 1,
             'arch': args.arch,
             'state_dic': model.state_dict(),
             'best_prec1': best_prec1,
@@ -252,7 +239,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure average accuracy and record loss
         prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-            accuracy(output, target, topk=(1,5))
+            accuracy(output, target, topk=(1, 5))
         prec1 = (prec1_x + prec1_y + prec1_theta)/3
         prec5 = (prec5_x + prec5_y + prec5_theta)/3
 
@@ -396,7 +383,15 @@ class BlockDataset(datasets):
 
     def __getitem__(self, idx):
         img_path = self.samples.iloc[idx, 0]
+        image = io.imread(img_path)
+        label = self.samples.iloc[idx, 1:].as_matrix()
+        label = label.astype('float').reshape(-1, 3)  # 1*3 matrix
+        sample = {'image': image, 'label': label}
 
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
 
 
 class AverageMeter(object):
