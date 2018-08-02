@@ -8,9 +8,11 @@
 import argparse  # module for user-friendly command-line interfaces
 import os
 from skimage import io
+from PIL import Image
 import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
+import matplotlib.pyplot as plt  # for debug
 import time
 import warnings
 
@@ -22,6 +24,7 @@ import torch.distributed as dist
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
+from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
@@ -33,7 +36,7 @@ model_names = sorted(name for name in models.__dict__
 
 # command-line interface arguments
 parser = argparse.ArgumentParser(description='Pytorch transfer learning for blockEstmation')
-parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
+# parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
@@ -68,9 +71,9 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=1, type=int,
+parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
-parser.add_argument('--numClass', default=[202, 202, 36],type=int,
+parser.add_argument('--numClass', default=[202, 202, 36], type=int,
                     help='number of class for x, y and theta')
 
 
@@ -116,6 +119,7 @@ def main():
     model.add_module('concat_fc', concat_fc)
 
     # gpu settings, default is on one GPU
+    '''
     if args.gpu is not None:
         model = model.cuda(args.gpu)  # convert model to relevant single GPU
     elif args.distributed:
@@ -128,9 +132,10 @@ def main():
         else:
             # module replicated in multi-device and each handles a portion of input
             model = torch.nn.DataParallel(model).cuda()
+    '''
 
     # define loss function and optimizer
-    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+    criterion = nn.CrossEntropyLoss()  # .cuda(args.gpu)
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
@@ -226,30 +231,40 @@ def train(train_loader, model, criterion, optimizer, epoch):
     end = time.time()
     # training with mini-batch
     for i, (input, target) in enumerate(train_loader):
-        # mesure data loading time
+        # measure data loading time
         data_time.update(time.time() - end)
 
         if args.gpu is not None:
             input = input.cuda(args.gpu, non_blocking=True)
-        target = target.cuda(args.gpu, non_blocking=True)
+            target = target.cuda(args.gpu, non_blocking=True)
+
+        target = target.view(-1, 3)
+        target_x = target[:, 0]
+        target_y = target[:, 1]
+        target_theta = target[:, 2]
 
         # forward pass
-        output = model(input)
-        loss = criterion(output, target)
+        output_x, output_y, output_theta = model(input)
+
+        # sum up losses for different classification task
+        loss_x = criterion(output_x, target_x)
+        loss_y = criterion(output_y, target_y)
+        loss_theta = criterion(output_theta, target_theta)
+        global_loss = loss_x + loss_y + loss_theta
 
         # measure average accuracy and record loss
         prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-            accuracy(output, target, topk=(1, 5))
+            accuracy([output_x, output_y, output_theta], [target_x, target_y, target_theta], topk=(1, 5))
         prec1 = (prec1_x + prec1_y + prec1_theta)/3
         prec5 = (prec5_x + prec5_y + prec5_theta)/3
 
-        losses.update(loss.item(), input.size(0))
+        losses.update(global_loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
         top5.update(prec5[0], input.size(0))
 
         # compute gradient and do SGD for this mini-batch
         optimizer.zero_grad()
-        loss.backward()
+        global_loss.backward()
         optimizer.step()
 
         # measure ellapsed time
@@ -338,14 +353,14 @@ def accuracy(output, target, topk=(1,)):
         batch_size = target.size(0)
 
         # split groundtruth to groundtruth for x, y and theta(to modify)
-        target_x = target[0:args.numClass[1]]
-        target_y = target[args.numClass[1]:(args.numClass[1] + args.numClass[2])]
-        target_theta = target[(args.numClass[1] + args.numClass[2]):]
+        target_x = target[:, 0]
+        target_y = target[:, 1]
+        target_theta = target[:, 2]
 
         # split output to outputs for x, y and theta(to modify)
-        output_x = output[0:args.numClass[1]]
-        output_y = output[args.numClass[1]:(args.numClass[1]+args.numClass[2])]
-        output_theta = output[(args.numClass[1]+args.numClass[2]):]
+        output_x = output[0]
+        output_y = output[1]
+        output_theta = output[2]
 
         _, pred_x = output_x.topk(maxk, 1, True, True)  # output value and indices
         _, pred_y = output_y.topk(maxk, 1, True, True)
@@ -372,7 +387,7 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
-class BlockDataset(datasets):
+class BlockDataset(Dataset):
     """block pose estimation dataset"""
     def __init__(self, csv_file, transform=None):
         self.samples = pd.read_csv(csv_file)  # (input, label)
@@ -383,13 +398,18 @@ class BlockDataset(datasets):
 
     def __getitem__(self, idx):
         img_path = self.samples.iloc[idx, 0]
-        image = io.imread(img_path)
-        label = self.samples.iloc[idx, 1:].as_matrix()
-        label = label.astype('float').reshape(-1, 3)  # 1*3 matrix
-        sample = {'image': image, 'label': label}
+        # image = io.imread(img_path)
+        image = Image.open(img_path)
+        label = self.samples.iloc[idx, 1:].values
+        label = label.astype('float').reshape(-1, 3)  # 1*3 narray
+        label = torch.from_numpy(label)
+        label = label.long() - 1  # lua index begins at 1
 
         if self.transform:
-            sample = self.transform(sample)
+            image = self.transform(image)
+
+        # sample = {'image': image, 'label': label}
+        sample = (image, label)
 
         return sample
 
@@ -421,6 +441,7 @@ class ConcatTable(nn.Module):
         self.FC_theta = nn.Linear(512, out_theta)
 
     def forward(self, x):
+        x = x.view(-1, 512*1*1)
         out = [self.FC_x(x), self.FC_y(x), self.FC_theta(x)]
         return out
 
