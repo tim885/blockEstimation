@@ -73,6 +73,8 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
+parser.add_argument('--cpu', default=True, type=bool,
+                    help='whether only use cpu.')
 parser.add_argument('--numClass', default=[202, 202, 36], type=int,
                     help='number of class for x, y and theta')
 
@@ -119,9 +121,11 @@ def main():
     model.add_module('concat_fc', concat_fc)
 
     # gpu settings, default is on one GPU
-    '''
+
     if args.gpu is not None:
         model = model.cuda(args.gpu)  # convert model to relevant single GPU
+    elif args.cpu:
+        model = model  # only use cpu mode
     elif args.distributed:
         model.cuda()
         model = torch.nn.parallel.DistributedDataParallel(model)
@@ -132,10 +136,13 @@ def main():
         else:
             # module replicated in multi-device and each handles a portion of input
             model = torch.nn.DataParallel(model).cuda()
-    '''
 
     # define loss function and optimizer
-    criterion = nn.CrossEntropyLoss()  # .cuda(args.gpu)
+    if args.cpu:
+        criterion = nn.CrossEntropyLoss()
+    else:
+        criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
@@ -157,7 +164,6 @@ def main():
         cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not, worse speed
 
     # load block estimation dataset
-
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])  # imagenet statistics
 
@@ -254,7 +260,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure average accuracy and record loss
         prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-            accuracy([output_x, output_y, output_theta], [target_x, target_y, target_theta], topk=(1, 5))
+            accuracy([output_x, output_y, output_theta], target, topk=(1, 5))
         prec1 = (prec1_x + prec1_y + prec1_theta)/3
         prec5 = (prec5_x + prec5_y + prec5_theta)/3
 
