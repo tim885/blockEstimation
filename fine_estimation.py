@@ -1,9 +1,9 @@
-# transfer learning script for block pose(x,y,theta) coarse estimation
+# transfer learning script for block pose(x,y,theta) fine estimation
 # originally implemented with Torch by Vianney Loing
 # derived from pytorch/examples/imagenet
 #
 # created by QIU Xuchong
-# 2018/07
+# 2018/08
 
 import argparse  # module for user-friendly command-line interfaces
 import os
@@ -35,7 +35,7 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for blockEstmation')
+parser = argparse.ArgumentParser(description='Pytorch transfer learning for block fine estmation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
@@ -43,7 +43,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
-parser.add_argument('--epochs', default=140, type=int, metavar='N',
+parser.add_argument('--epochs', default=201, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -71,11 +71,11 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=1, type=int,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
-parser.add_argument('--numClass', default=[202, 202, 36], type=int,
+parser.add_argument('--numClass', default=[60, 60, 90], type=int,
                     help='number of class for x, y and theta')
 parser.add_argument('--vis', default=True, type=bool,
                     help='whether visualize training and validation')
@@ -167,16 +167,16 @@ def main():
 
     # load block estimation dataset
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])  # imagenet statistics
+                                     std=[0.229, 0.224, 0.225])  # imagenet statistics, to check
 
     transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
                                     transforms.RandomHorizontalFlip(),
                                     transforms.ToTensor(),  # convert image to tensor
                                     normalize])
 
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
-    csv_train = csv_dir + '2018_01_30-10_21-data-5-5-5_train.txt'
-    csv_val = csv_dir + '2018_01_30-10_21-data-5-5-5_val.txt'
+    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/'
+    csv_train = csv_dir + '2018_01_15-13_59-dataMonoBlock_P-2-2-2_train.txt'
+    csv_val = csv_dir + '2018_01_15-13_59-dataMonoBlock_P-2-2-2__val.txt'
 
     train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
     val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
@@ -226,9 +226,7 @@ def main():
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
             'optimizer': optimizer.state_dict(),  # save optimizer state
-        }, is_best, 'checkpoint.pth.tar')
-
-
+        }, is_best, 'checkpoint_fine.pth.tar')
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -358,7 +356,7 @@ def validate(val_loader, model, criterion):
 def save_checkpoint(state, is_best, filename):
     torch.save(state, filename)
     if is_best:  # store model with best perf
-        shutil.copyfile(filename, 'model_best.path.tar')
+        shutil.copyfile(filename, 'model_best_fine.path.tar')
 
 
 def adjust_learning_rate(optimizer, epoch):
@@ -463,7 +461,7 @@ class ConcatTable(nn.Module):
         self.FC_theta = nn.Linear(512, out_theta)
 
     def forward(self, x):
-        x = x.view(-1, 512*1*1)
+        x = x.view(-1, 512*1*1)  # reshape x to a vector
         out = [self.FC_x(x), self.FC_y(x), self.FC_theta(x)]
         return out
 

@@ -17,7 +17,7 @@ file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scen
 
 file:write("image_name,block_x,block_y,block_theta","\n")
 
-for i=1, 8000 do -- tpath:size(1)
+for i=1, tpaths:size(1) do -- tpath:size(1)
     l = string.char(table.unpack(tpaths[{i,{}}]:totable()))
     file:write(l .. ",") -- write path
     block_x = tostring(tClasses[{i,1}])
@@ -35,7 +35,7 @@ io.close(file)
 file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_val.txt", "w")
 file:write("image_name,block_x,block_y,block_theta","\n")
 
-for i=1, 2000 do -- tpath:size(1)
+for i=1, vpaths:size(1) do -- vpath:size(1)
     l = string.char(table.unpack(vpaths[{i,{}}]:totable()))
     file:write(l .. ",") -- write path
     block_x = tostring(vClasses[{i,1}])

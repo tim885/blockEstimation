@@ -1,9 +1,9 @@
-# transfer learning script for block pose(x,y,theta) coarse estimation
+# transfer learning script for robot clamp pos(x,y) estimation
 # originally implemented with Torch by Vianney Loing
 # derived from pytorch/examples/imagenet
 #
 # created by QIU Xuchong
-# 2018/07
+# 2018/08
 
 import argparse  # module for user-friendly command-line interfaces
 import os
@@ -43,7 +43,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
-parser.add_argument('--epochs', default=140, type=int, metavar='N',
+parser.add_argument('--epochs', default=40, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -71,11 +71,11 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=1, type=int,
+parser.add_argument('--gpu', default=2, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
-parser.add_argument('--numClass', default=[202, 202, 36], type=int,
+parser.add_argument('--numClass', default=[50, 50, 50], type=int,
                     help='number of class for x, y and theta')
 parser.add_argument('--vis', default=True, type=bool,
                     help='whether visualize training and validation')
@@ -174,9 +174,9 @@ def main():
                                     transforms.ToTensor(),  # convert image to tensor
                                     normalize])
 
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
-    csv_train = csv_dir + '2018_01_30-10_21-data-5-5-5_train.txt'
-    csv_val = csv_dir + '2018_01_30-10_21-data-5-5-5_val.txt'
+    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_toolDetectionV3.1/'
+    csv_train = csv_dir + '2018_02_22-20_17-data_toolDetection-0.02-0_train.txt'
+    csv_val = csv_dir + '2018_02_22-20_17-data_toolDetection-0.02-0_val.txt'
 
     train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
     val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
@@ -229,8 +229,6 @@ def main():
         }, is_best, 'checkpoint.pth.tar')
 
 
-
-
 def train(train_loader, model, criterion, optimizer, epoch):
     batch_time = AverageMeter()  # class instance
     data_time = AverageMeter()
@@ -250,25 +248,23 @@ def train(train_loader, model, criterion, optimizer, epoch):
             input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
-        target = target.view(-1, 3)
+        target = target.view(-1, 2)
         target_x = target[:, 0]
         target_y = target[:, 1]
-        target_theta = target[:, 2]
 
         # forward pass
-        output_x, output_y, output_theta = model(input)
+        output_x, output_y = model(input)
 
         # sum up losses for different classification task
         loss_x = criterion(output_x, target_x)
         loss_y = criterion(output_y, target_y)
-        loss_theta = criterion(output_theta, target_theta)
-        global_loss = loss_x + loss_y + loss_theta
+        global_loss = loss_x + loss_y
 
         # measure average accuracy and record loss
-        prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-            accuracy([output_x, output_y, output_theta], target, topk=(1, 5))
-        prec1 = (prec1_x + prec1_y + prec1_theta)/3
-        prec5 = (prec5_x + prec5_y + prec5_theta)/3
+        prec1_x, prec1_y, prec5_x, prec5_y = \
+            accuracy([output_x, output_y], target, topk=(1, 5))
+        prec1 = (prec1_x + prec1_y)/2
+        prec5 = (prec5_x + prec5_y)/2
 
         losses.update(global_loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
@@ -291,8 +287,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                epoch, i, len(train_loader), batch_time=batch_time,
-                data_time=data_time, loss=losses, top1=top1, top5=top5))
+                  epoch, i, len(train_loader), batch_time=batch_time,
+                  data_time=data_time, loss=losses, top1=top1, top5=top5))
 
 
 def validate(val_loader, model, criterion):
@@ -312,25 +308,23 @@ def validate(val_loader, model, criterion):
                 input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
-            target = target.view(-1, 3)
+            target = target.view(-1, 2)
             target_x = target[:, 0]
             target_y = target[:, 1]
-            target_theta = target[:, 2]
 
             # forward pass
-            output_x, output_y, output_theta = model(input)
+            output_x, output_y = model(input)
 
             # sum up losses for different classification task
             loss_x = criterion(output_x, target_x)
             loss_y = criterion(output_y, target_y)
-            loss_theta = criterion(output_theta, target_theta)
-            global_loss = loss_x + loss_y + loss_theta
+            global_loss = loss_x + loss_y
 
             # measure accuracy and record loss
-            prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-                accuracy([output_x, output_y, output_theta], target, topk=(1, 5))
-            prec1 = (prec1_x + prec1_y + prec1_theta) / 3
-            prec5 = (prec5_x + prec5_y + prec5_theta) / 3
+            prec1_x, prec1_y, prec5_x, prec5_y, prec5_theta = \
+                accuracy([output_x, output_y], target, topk=(1, 5))
+            prec1 = (prec1_x + prec1_y) / 2
+            prec5 = (prec5_x + prec5_y) / 2
 
             losses.update(global_loss.item(), input.size(0))
             top1.update(prec1[0], input.size(0))
@@ -377,34 +371,27 @@ def accuracy(output, target, topk=(1,)):
         # split groundtruth to groundtruth for x, y and theta(to modify)
         target_x = target[:, 0]
         target_y = target[:, 1]
-        target_theta = target[:, 2]
 
         # split output to outputs for x, y and theta(to modify)
         output_x = output[0]
         output_y = output[1]
-        output_theta = output[2]
 
         _, pred_x = output_x.topk(maxk, 1, True, True)  # output value and indices
         _, pred_y = output_y.topk(maxk, 1, True, True)
-        _, pred_theta = output_theta.topk(maxk, 1, True, True)
 
         pred_x = pred_x.t()  # transpose dim size
         pred_y = pred_y.t()
-        pred_theta = pred_theta.t()
 
         correct_x = pred_x.eq(target_x.view(1, -1).expand_as(pred_x))
         correct_y = pred_y.eq(target_y.view(1, -1).expand_as(pred_y))
-        correct_theta = pred_theta.eq(target_theta.view(1, -1).expand_as(pred_theta))
 
         res = []
         for k in topk:  # store in res and output
             correct_k_x = correct_x[:k].view(-1).float().sum(0, keepdim=True)
             correct_k_y = correct_y[:k].view(-1).float().sum(0, keepdim=True)
-            correct_k_theta = correct_theta[:k].view(-1).float().sum(0, keepdim=True)
 
             res.append(correct_k_x.mul_(100 / batch_size))
             res.append(correct_k_y.mul_(100 / batch_size))
-            res.append(correct_k_theta.mul_(100 / batch_size))
 
         return res
 
@@ -456,15 +443,14 @@ class AverageMeter(object):
 
 class ConcatTable(nn.Module):
     """Define ConcatTable module in pytorch """
-    def __init__(self, out_x, out_y, out_theta):
+    def __init__(self, out_x, out_y):
         super(ConcatTable, self).__init__()
         self.FC_x = nn.Linear(512, out_x)
         self.FC_y = nn.Linear(512, out_y)
-        self.FC_theta = nn.Linear(512, out_theta)
 
     def forward(self, x):
         x = x.view(-1, 512*1*1)
-        out = [self.FC_x(x), self.FC_y(x), self.FC_theta(x)]
+        out = [self.FC_x(x), self.FC_y(x)]
         return out
 
 
