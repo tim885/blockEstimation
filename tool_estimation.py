@@ -1,4 +1,4 @@
-# transfer learning script for robot clamp pos(x,y) estimation
+# transfer learning script for robot tool estimation
 # originally implemented with Torch by Vianney Loing
 # derived from pytorch/examples/imagenet
 #
@@ -7,12 +7,12 @@
 
 import argparse  # module for user-friendly command-line interfaces
 import os
-from skimage import io
 from PIL import Image
 import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
-import matplotlib.pyplot as plt  # for debug
+import numpy as np
+import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
 
@@ -26,7 +26,6 @@ import torch.utils.data
 import torch.utils.data.distributed
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
 import torchvision.models as models
 
 # return sorted list from the items in iterable
@@ -41,6 +40,9 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
+parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/'
+                                          'UnrealData/scenario_toolDetectionV3.1/',
+                    type=str, help='directory containing dataset csv files')
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
 parser.add_argument('--epochs', default=40, type=int, metavar='N',
@@ -60,7 +62,7 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')  # dest; action
+                    help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
@@ -71,12 +73,12 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=2, type=int,
+parser.add_argument('--gpu', default=1, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
-parser.add_argument('--numClass', default=[50, 50, 50], type=int,
-                    help='number of class for x, y and theta')
+parser.add_argument('--numClass', default=[50, 50], type=list,
+                    help='number of class for each classification task')
 parser.add_argument('--vis', default=True, type=bool,
                     help='whether visualize training and validation')
 
@@ -123,7 +125,6 @@ def main():
     model.add_module('concat_fc', concat_fc)
 
     # gpu settings, default is on one GPU
-
     if args.gpu is not None:
         model = model.cuda(args.gpu)  # convert model to relevant single GPU
     elif args.cpu:
@@ -153,30 +154,40 @@ def main():
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume, map_location=lambda storage, loc: storage.cuda(args.gpu))  # load model at checkpoint, specify device used
+            checkpoint = torch.load(args.resume, map_location=lambda storage, loc: storage.cuda(args.gpu))
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])  # copy params and buffers to model
             optimizer.load_state_dict(checkpoint['optimizer'])
+            losses = checkpoint['losses']
+            errors = checkpoint['errors']
+            date_time = checkpoint['date_time']  # date of beginning
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-        cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not, worse speed
+        cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not fixed, worse speed
+    else:
+        # initialization
+        losses = np.zeros(args.epochs)  # training loss
+        errors = np.zeros((args.epochs, 2*len(args.numClass)))  # train and val errors
+        date_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime())  # current date
 
-    # load block estimation dataset
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])  # imagenet statistics
-
-    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
-                                    transforms.RandomHorizontalFlip(),
-                                    transforms.ToTensor(),  # convert image to tensor
-                                    normalize])
-
+    # dataset settings
+    # load dataset configurations from csv files
     csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_toolDetectionV3.1/'
-    csv_train = csv_dir + '2018_02_22-20_17-data_toolDetection-0.02-0_train.txt'
-    csv_val = csv_dir + '2018_02_22-20_17-data_toolDetection-0.02-0_val.txt'
+    csv_train = csv_dir + '2018_02_22-20_17-data-0.02-0_train.txt'
+    csv_val = csv_dir + '2018_02_22-20_17-data-0.02-0_val.txt'
+
+    # imagenet statistics
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])  #
+
+    # composition of transforms without horizontal flip(localization issue)
+    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
+                                    transforms.ToTensor(),
+                                    normalize])
 
     train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
     val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
@@ -192,12 +203,12 @@ def main():
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    # define validation dataset and loader together
+    # define validation data loader
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluate on val set and end function
+    if args.evaluate:  # evaluation mode
         validate(val_loader, model, criterion)
         return
 
@@ -212,29 +223,96 @@ def main():
         adjust_learning_rate(optimizer, epoch)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        err_x_train, err_y_train, loss = train(train_loader, model, criterion, optimizer, epoch)
 
         # evaluate on validation set after training of one epoch
-        prec1 = validate(val_loader, model, criterion)
+        err_x_val, err_y_val, prec1, conf_x, conf_y = validate(val_loader, model, criterion)
 
         # remember best prec1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
+        losses[epoch] = np.array(loss)
+        errors[epoch, :] = [err_x_train, err_x_val, err_y_train, err_y_val]
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
             'optimizer': optimizer.state_dict(),  # save optimizer state
-        }, is_best, 'checkpoint.pth.tar')
+            'losses': losses,  # loss in function with epoch
+            'errors': errors,
+            'date_time': date_time,
+        }, is_best, 'coarse_estimation/checkpoint.pth.tar')
+
+        # save classification error/loss
+        if epoch == 0:
+            f_error = open('tool_estimation/error_'+date_time+'.log', 'w')
+            f_error.write('Epoch Training_error_x Training_error_y'
+                          'Validation_error_x Validation_error_y')
+            f_loss = open('tool_estimation/loss_' + date_time + '.log', 'w')
+            f_loss.write('Epoch Training_loss')
+        else:
+            f_error = open('tool_estimation/error_'+date_time+'.log', 'a')
+            f_loss = open('tool_estimation/loss_' + date_time + '.log', 'a')
+
+        f_error.write('\n'+str(epoch)+' '
+                       + str(errors[epoch, 0])+'  '+str(errors[epoch, 1])+'  '
+                       + str(errors[epoch, 2])+'  '+str(errors[epoch, 3]))
+        f_loss.write('\n'+str(epoch)+'  '+str(np.array(loss)))
+
+        f_error.close()
+        f_loss.close()
+
+        plt.switch_backend('agg')  # use matplotlib without gui support
+        # plot training loss curve
+        epochs = np.arange(1, epoch+2)
+        fig_loss = plt.figure()
+        plt.grid()
+        plt.plot(epochs, losses[0:epoch+1], 'bo-')
+        plt.xlabel('epoch'); plt.ylabel('loss')
+        plt.title('Training loss value - epoch ')
+        fig_loss.savefig('tool_estimation/fig_train_loss_'+date_time+'.log.eps')
+
+        # plot error curve
+        fig_err = plt.figure()
+        plt.grid()
+        plt.plot(epochs, errors[0:epoch+1, 0], 'ro-',
+                 epochs, errors[0:epoch+1, 1], 'go-',
+                 epochs, errors[0:epoch+1, 2], 'bo-',
+                 epochs, errors[0:epoch+1, 3], 'yo-')
+        plt.legend(('train_err_x', 'val_err_x', 'train_err_y', 'val_err_y'),
+                   loc=(0.01, 0.01))
+        plt.xlabel('epoch'); plt.ylabel('train/val errors')
+        plt.title('Training/Validation errors - epoch')
+        fig_err.savefig('tool_estimation/fig_errors_' + date_time + '.log.eps')
+
+        if (epoch+1) % 5 == 1:
+            # every 5 epochs, plot confusion matrix
+            fig_conf_x = plt.figure()
+            ax = fig_conf_x.add_subplot(111)
+            cax = ax.matshow(conf_x.numpy(), vmin=0, vmax=1)
+            fig_conf_x.colorbar(cax)
+            plt.xlabel('predicted class'); plt.ylabel('actual class')
+            plt.title('classification along x')
+            fig_conf_x.savefig('tool_estimation/fig_confusion_x_' + str(epoch + 1) + '.log.eps')
+
+            fig_conf_y = plt.figure()
+            ax = fig_conf_y.add_subplot(111)
+            cax = ax.matshow(conf_y.numpy(), vmin=0, vmax=1)
+            fig_conf_y.colorbar(cax)
+            plt.xlabel('predicted class'); plt.ylabel('actual class')
+            plt.title('classification along y')
+            fig_conf_y.savefig('tool_estimation/fig_confusion_y_' + str(epoch + 1) + '.log.eps')
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
-    batch_time = AverageMeter()  # class instance
+    batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    err_x = AverageMeter()
+    err_y = AverageMeter()
 
     model.train()  # switch to training mode
 
@@ -248,12 +326,13 @@ def train(train_loader, model, criterion, optimizer, epoch):
             input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
-        target = target.view(-1, 2)
+        target = target.view(-1, len(args.numClass))
         target_x = target[:, 0]
         target_y = target[:, 1]
 
         # forward pass
         output_x, output_y = model(input)
+        output = [output_x, output_y]
 
         # sum up losses for different classification task
         loss_x = criterion(output_x, target_x)
@@ -262,13 +341,18 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure average accuracy and record loss
         prec1_x, prec1_y, prec5_x, prec5_y = \
-            accuracy([output_x, output_y], target, topk=(1, 5))
-        prec1 = (prec1_x + prec1_y)/2
-        prec5 = (prec5_x + prec5_y)/2
+            accuracy(output, target, topk=(1, 5))
+        prec1 = (prec1_x + prec1_y)/len(args.numClass)
+        prec5 = (prec5_x + prec5_y)/len(args.numClass)
+        err1_x = 100 - prec1_x
+        err1_y = 100 - prec1_y
 
-        losses.update(global_loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
         top5.update(prec5[0], input.size(0))
+        err_x.update(err1_x[0], input.size(0))
+        err_y.update(err1_y[0], input.size(0))
+
+        losses.update(global_loss.item(), input.size(0))
 
         # compute gradient and do SGD for this mini-batch
         optimizer.zero_grad()
@@ -287,8 +371,10 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                  epoch, i, len(train_loader), batch_time=batch_time,
-                  data_time=data_time, loss=losses, top1=top1, top5=top5))
+                epoch, i, len(train_loader), batch_time=batch_time,
+                data_time=data_time, loss=losses, top1=top1, top5=top5))
+
+    return [err_x.avg, err_y.avg, losses.avg]
 
 
 def validate(val_loader, model, criterion):
@@ -296,6 +382,12 @@ def validate(val_loader, model, criterion):
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    err_x = AverageMeter()
+    err_y = AverageMeter()
+
+    # tensors of outputs and targets on whole dataset
+    outputs = torch.zeros([1, sum(args.numClass)], dtype=torch.float, device='cuda:'+str(args.gpu))
+    targets = torch.zeros([1, len(args.numClass)], dtype=torch.long, device='cuda:'+str(args.gpu))
 
     # switch to evaluate mode
     model.eval()
@@ -308,12 +400,15 @@ def validate(val_loader, model, criterion):
                 input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
-            target = target.view(-1, 2)
+            target = target.view(-1, len(args.numClass))
+            targets = torch.cat((targets, target), 0)  # cat new rows
             target_x = target[:, 0]
             target_y = target[:, 1]
 
             # forward pass
             output_x, output_y = model(input)
+            output = [output_x, output_y]
+            outputs = torch.cat((outputs, torch.cat((output_x, output_y), 1)), 0)
 
             # sum up losses for different classification task
             loss_x = criterion(output_x, target_x)
@@ -321,14 +416,19 @@ def validate(val_loader, model, criterion):
             global_loss = loss_x + loss_y
 
             # measure accuracy and record loss
-            prec1_x, prec1_y, prec5_x, prec5_y, prec5_theta = \
-                accuracy([output_x, output_y], target, topk=(1, 5))
-            prec1 = (prec1_x + prec1_y) / 2
-            prec5 = (prec5_x + prec5_y) / 2
+            prec1_x, prec1_y, prec5_x, prec5_y = \
+                accuracy(output, target, topk=(1, 5))
+            prec1 = (prec1_x + prec1_y) / len(args.numClass)
+            prec5 = (prec5_x + prec5_y) / len(args.numClass)
+            err1_x = 100 - prec1_x
+            err1_y = 100 - prec1_y
 
-            losses.update(global_loss.item(), input.size(0))
             top1.update(prec1[0], input.size(0))
             top5.update(prec5[0], input.size(0))
+            err_x.update(err1_x[0], input.size(0))
+            err_y.update(err1_y[0], input.size(0))
+
+            losses.update(global_loss.item(), input.size(0))
 
             # measure ellapsed time
             batch_time.update(time.time() - end)
@@ -346,18 +446,25 @@ def validate(val_loader, model, criterion):
         print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
 
-    return top1.avg
+    outputs = outputs[1:]  # remove init row
+    targets = targets[1:]
+
+    # generate confusion matrix
+    confusion_x, confusion_y = gen_confusion(outputs, targets)
+
+    return [err_x.avg, err_y.avg, top1.avg, confusion_x, confusion_y]
 
 
 def save_checkpoint(state, is_best, filename):
+    """save state and best model ever"""
     torch.save(state, filename)
     if is_best:  # store model with best perf
-        shutil.copyfile(filename, 'model_best.path.tar')
+        shutil.copyfile(filename, 'coarse_estimation/model_best.path.tar')
 
 
 def adjust_learning_rate(optimizer, epoch):
     """set learning rate dynamic to epoch"""
-    # lr = agrs.lr * (0.1**(epoch//30))  # decay by 10 per 30 epochs
+    # lr = args.lr * (0.1**(epoch//30))  # decay by 10 per 30 epochs
     for param_group in optimizer.param_groups:
         param_group['lr'] = args.lr  # fixed lr
 
@@ -376,7 +483,7 @@ def accuracy(output, target, topk=(1,)):
         output_x = output[0]
         output_y = output[1]
 
-        _, pred_x = output_x.topk(maxk, 1, True, True)  # output value and indices
+        _, pred_x = output_x.topk(maxk, 1, True, True)  # predicted value and indices
         _, pred_y = output_y.topk(maxk, 1, True, True)
 
         pred_x = pred_x.t()  # transpose dim size
@@ -396,6 +503,40 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
+def gen_confusion(outputs, targets):
+    """generate confusion matrix for x, y and theta"""
+    confusion_x = torch.zeros(args.numClass[0], args.numClass[0])
+    confusion_y = torch.zeros(args.numClass[1], args.numClass[1])
+
+    # split groundtruth to groundtruth for x, y and theta(to modify)
+    target_x = targets[:, 0]
+    target_y = targets[:, 1]
+
+    # split output to outputs for x, y and theta(to modify)
+    output_x = outputs[:, 0:args.numClass[0]]
+    output_y = outputs[:, args.numClass[0]:(args.numClass[0]+args.numClass[1])]
+
+    _, pred_x = output_x.topk(1, 1, True, True)  # predicted class indices
+    _, pred_y = output_y.topk(1, 1, True, True)
+
+    for i in range(0, targets.size(0)):  # each row represents a ground-truth class
+        confusion_x[target_x[i], pred_x[i]] += 1
+        confusion_y[target_y[i], pred_y[i]] += 1
+
+    for i in range(0, args.numClass[0]):
+        if confusion_x[i].sum() == 0:
+            confusion_x[i] = 0
+        else:
+            confusion_x[i] = confusion_x[i] / confusion_x[i].sum()
+
+        if confusion_x[i].sum() == 0:
+            confusion_y[i] = 0
+        else:
+            confusion_y[i] = confusion_y[i] / confusion_y[i].sum()
+
+    return [confusion_x, confusion_y]
+
+
 class BlockDataset(Dataset):
     """block pose estimation dataset"""
     def __init__(self, csv_file, transform=None):
@@ -410,7 +551,7 @@ class BlockDataset(Dataset):
         # image = io.imread(img_path)
         image = Image.open(img_path)
         label = self.samples.iloc[idx, 1:].values
-        label = label.astype('float').reshape(-1, 3)  # 1*3 narray
+        label = label.astype('float').reshape(-1, len(args.numClass))
         label = torch.from_numpy(label)
         label = label.long() - 1  # lua index begins at 1
 
@@ -442,7 +583,7 @@ class AverageMeter(object):
 
 
 class ConcatTable(nn.Module):
-    """Define ConcatTable module in pytorch """
+    """Define ConcatTable module for parallel FC layers"""
     def __init__(self, out_x, out_y):
         super(ConcatTable, self).__init__()
         self.FC_x = nn.Linear(512, out_x)
