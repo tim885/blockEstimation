@@ -72,7 +72,7 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=2, type=int,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
@@ -163,6 +163,10 @@ def main():
             date_time = checkpoint['date_time']  # date of beginning
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
+
+            if args.epochs > len(losses):  # resume training with more epochs
+                losses = np.append(losses, np.zeros([args.epochs - len(losses)]))
+                errors = np.append(errors, np.zeros([args.epochs - len(errors), 2*len(args.numClass)]), axis=0)
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 

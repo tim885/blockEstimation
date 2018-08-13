@@ -34,7 +34,7 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for blockEstmation')
+parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose coarse estmation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
@@ -58,10 +58,10 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='coarse_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')  # dest; action
+                    help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
@@ -163,6 +163,11 @@ def main():
             date_time = checkpoint['date_time']  # date of beginning
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
+
+            if args.epochs > len(losses):  # resume training with more epochs
+                losses = np.append(losses, np.zeros([args.epochs - len(losses)]))
+                errors = np.append(errors, np.zeros([args.epochs - len(errors), 2*len(args.numClass)]), axis=0)
+                
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 

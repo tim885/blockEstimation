@@ -13,7 +13,7 @@ vpaths = vpaths[{{},{1,103}}]
 
 -- convert charTensor to string and write in dataset csv file
 -- training set
-file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_train_toy.txt", "w")
+file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_train.txt", "w")
 
 file:write("image_name,block_x,block_y,block_theta","\n")
 
@@ -32,7 +32,7 @@ end
 io.close(file)
 
 -- validation set 
-file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_val_toy.txt", "w")
+file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_val.txt", "w")
 file:write("image_name,block_x,block_y,block_theta","\n")
 
 for i=1, vpaths:size(1) do -- vpaths:size(1)

@@ -165,6 +165,11 @@ def main():
             date_time = checkpoint['date_time']  # date of beginning
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
+
+            if args.epochs > len(losses):  # resume training with more epochs
+                losses = np.append(losses, np.zeros([args.epochs - len(losses)]))
+                errors = np.append(errors, np.zeros([args.epochs - len(errors), 2*len(args.numClass)]), axis=0)
+                
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
