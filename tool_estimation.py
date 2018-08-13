@@ -34,7 +34,7 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for blockEstmation')
+parser = argparse.ArgumentParser(description='Pytorch transfer learning for robot tool position estmation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
@@ -43,15 +43,14 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/'
                                           'UnrealData/scenario_toolDetectionV3.1/',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
-                    help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
+parser.add_argument('-j', '--workers', default=2, type=int, help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=40, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -59,7 +58,7 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
+parser.add_argument('--resume', default='tool_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
@@ -73,7 +72,7 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=1, type=int,
+parser.add_argument('--gpu', default=2, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
@@ -185,7 +184,7 @@ def main():
                                      std=[0.229, 0.224, 0.225])  #
 
     # composition of transforms without horizontal flip(localization issue)
-    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
+    transform = transforms.Compose([transforms.Resize((224, 224)),  # fix input size
                                     transforms.ToTensor(),
                                     normalize])
 
@@ -242,7 +241,7 @@ def main():
             'losses': losses,  # loss in function with epoch
             'errors': errors,
             'date_time': date_time,
-        }, is_best, 'coarse_estimation/checkpoint.pth.tar')
+        }, is_best, 'tool_estimation/checkpoint.pth.tar')
 
         # save classification error/loss
         if epoch == 0:
@@ -294,7 +293,7 @@ def main():
             fig_conf_x.colorbar(cax)
             plt.xlabel('predicted class'); plt.ylabel('actual class')
             plt.title('classification along x')
-            fig_conf_x.savefig('tool_estimation/fig_confusion_x_' + str(epoch + 1) + '.log.eps')
+            fig_conf_x.savefig('tool_estimation/fig_confusion_x_' + str(epoch + 1) + '.jpg')
 
             fig_conf_y = plt.figure()
             ax = fig_conf_y.add_subplot(111)
@@ -302,7 +301,7 @@ def main():
             fig_conf_y.colorbar(cax)
             plt.xlabel('predicted class'); plt.ylabel('actual class')
             plt.title('classification along y')
-            fig_conf_y.savefig('tool_estimation/fig_confusion_y_' + str(epoch + 1) + '.log.eps')
+            fig_conf_y.savefig('tool_estimation/fig_confusion_y_' + str(epoch + 1) + '.jpg')
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -459,7 +458,7 @@ def save_checkpoint(state, is_best, filename):
     """save state and best model ever"""
     torch.save(state, filename)
     if is_best:  # store model with best perf
-        shutil.copyfile(filename, 'coarse_estimation/model_best.path.tar')
+        shutil.copyfile(filename, 'tool_estimation/model_best.path.tar')
 
 
 def adjust_learning_rate(optimizer, epoch):

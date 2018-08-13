@@ -42,8 +42,8 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
-                    help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
+parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
+                    help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=140, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -181,15 +181,23 @@ def main():
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])  #
+                                     std=[0.229, 0.224, 0.225])
 
     # composition of transforms without horizontal flip(localization issue)
-    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
-                                    transforms.ToTensor(),
-                                    normalize])
+    transform_train = transforms.Compose([transforms.Resize((256, 256)),
+                                          transforms.RandomResizedCrop(224,
+                                                                       scale=(0.25, 1.0),
+                                                                       ratio=(0.909, 1.1)),
+                                          transforms.ToTensor(),
+                                          normalize])
 
-    train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
-    val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
+    transform_val = transforms.Compose([transforms.Resize((256, 256)),
+                                        transforms.CenterCrop((224, 224)),
+                                        transforms.ToTensor(),
+                                        normalize])
+
+    train_dataset = BlockDataset(csv_file=csv_train, transform=transform_train)
+    val_dataset = BlockDataset(csv_file=csv_val, transform=transform_val)
 
     # define sampler for data fetching distributed training
     if args.distributed:
@@ -296,7 +304,7 @@ def main():
             fig_conf_x.colorbar(cax)
             plt.xlabel('predicted class'); plt.ylabel('actual class')
             plt.title('classification along x')
-            fig_conf_x.savefig('coarse_estimation/fig_confusion_x_' + str(epoch + 1) + '.log.eps')
+            fig_conf_x.savefig('coarse_estimation/fig_confusion_x_' + str(epoch + 1) + '.jpg')
 
             fig_conf_y = plt.figure()
             ax = fig_conf_y.add_subplot(111)
@@ -304,7 +312,7 @@ def main():
             fig_conf_y.colorbar(cax)
             plt.xlabel('predicted class'); plt.ylabel('actual class')
             plt.title('classification along y')
-            fig_conf_y.savefig('coarse_estimation/fig_confusion_y_' + str(epoch + 1) + '.log.eps')
+            fig_conf_y.savefig('coarse_estimation/fig_confusion_y_' + str(epoch + 1) + '.jpg')
 
             fig_conf_theta = plt.figure()
             ax = fig_conf_theta.add_subplot(111)
@@ -312,7 +320,7 @@ def main():
             fig_conf_theta.colorbar(cax)
             plt.xlabel('predicted class'); plt.ylabel('actual class')
             plt.title('classification along theta')
-            fig_conf_theta.savefig('coarse_estimation/fig_confusion_theta_' + str(epoch + 1) + '.log.eps')
+            fig_conf_theta.savefig('coarse_estimation/fig_confusion_theta_' + str(epoch + 1) + '.jpg')
 
 
 def train(train_loader, model, criterion, optimizer, epoch):

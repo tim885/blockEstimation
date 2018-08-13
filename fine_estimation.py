@@ -3,16 +3,16 @@
 # derived from pytorch/examples/imagenet
 #
 # created by QIU Xuchong
-# 2018/08
+# 2018/07
 
 import argparse  # module for user-friendly command-line interfaces
 import os
-from skimage import io
 from PIL import Image
 import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
-import matplotlib.pyplot as plt  # for debug
+import numpy as np
+import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
 
@@ -26,7 +26,6 @@ import torch.utils.data
 import torch.utils.data.distributed
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
 import torchvision.models as models
 
 # return sorted list from the items in iterable
@@ -35,14 +34,18 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for block fine estmation')
+parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose fine estmation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
-                    help='number of data loading workers (default: 1)')  # default is 1 for powerless machine
+parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/',
+                    type=str, help='directory containing dataset csv files')
+parser.add_argument('--results_path', default='fine_estimation/', type=str,
+                    help='directory for results storage')
+parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
+                    help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=201, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -57,7 +60,7 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
+parser.add_argument('--resume', default='fine_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')  # dest; action
@@ -71,12 +74,12 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=0, type=int,
+parser.add_argument('--gpu', default=1, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
-parser.add_argument('--numClass', default=[60, 60, 90], type=int,
-                    help='number of class for x, y and theta')
+parser.add_argument('--numClass', default=[60, 60, 90], type=list,
+                    help='number of class for each classification task')
 parser.add_argument('--vis', default=True, type=bool,
                     help='whether visualize training and validation')
 
@@ -123,7 +126,6 @@ def main():
     model.add_module('concat_fc', concat_fc)
 
     # gpu settings, default is on one GPU
-
     if args.gpu is not None:
         model = model.cuda(args.gpu)  # convert model to relevant single GPU
     elif args.cpu:
@@ -158,28 +160,45 @@ def main():
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])  # copy params and buffers to model
             optimizer.load_state_dict(checkpoint['optimizer'])
+            losses = checkpoint['losses']
+            errors = checkpoint['errors']
+            date_time = checkpoint['date_time']  # date of beginning
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-        cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not, worse speed
+        cudnn.benchmark = True  # optimize cudnn if input_sz is fix, if not fixed, worse speed
+    else:
+        # initialization
+        losses = np.zeros(args.epochs)  # training loss
+        errors = np.zeros((args.epochs, 2*len(args.numClass)))  # train and val errors
+        date_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.gmtime())  # current date
 
-    # load block estimation dataset
+    # dataset settings
+    # load dataset configurations from csv files
+    csv_train = args.csv_path + '2018_01_15-13_59-data-2-2-2_train.txt'
+    csv_val = args.csv_path + '2018_01_15-13_59-data-2-2-2_val.txt'
+
+    # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])  # imagenet statistics, to check
+                                     std=[0.229, 0.224, 0.225])
 
-    transform = transforms.Compose([transforms.RandomResizedCrop(224),  # fix input size
-                                    transforms.RandomHorizontalFlip(),
-                                    transforms.ToTensor(),  # convert image to tensor
-                                    normalize])
+    # composition of transforms without horizontal flip(localization issue)
+    transform_train = transforms.Compose([transforms.Resize((256, 256)),
+                                          transforms.RandomResizedCrop(224,
+                                                                       scale=(0.25, 1.0),
+                                                                       ratio=(0.909, 1.1)),
+                                          transforms.ToTensor(),
+                                          normalize])
 
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/'
-    csv_train = csv_dir + '2018_01_15-13_59-dataMonoBlock_P-2-2-2_train.txt'
-    csv_val = csv_dir + '2018_01_15-13_59-dataMonoBlock_P-2-2-2__val.txt'
+    transform_val = transforms.Compose([transforms.Resize((256, 256)),
+                                        transforms.CenterCrop((224, 224)),
+                                        transforms.ToTensor(),
+                                        normalize])
 
-    train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
-    val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
+    train_dataset = BlockDataset(csv_file=csv_train, transform=transform_train)
+    val_dataset = BlockDataset(csv_file=csv_val, transform=transform_val)
 
     # define sampler for data fetching distributed training
     if args.distributed:
@@ -192,12 +211,12 @@ def main():
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    # define validation dataset and loader together
+    # define validation data loader
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluate on val set and end function
+    if args.evaluate:  # evaluation mode
         validate(val_loader, model, criterion)
         return
 
@@ -212,29 +231,108 @@ def main():
         adjust_learning_rate(optimizer, epoch)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        err_x_train, err_y_train, err_theta_train, loss = train(train_loader, model, criterion, optimizer, epoch)
 
         # evaluate on validation set after training of one epoch
-        prec1 = validate(val_loader, model, criterion)
+        err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
 
         # remember best prec1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
+        losses[epoch] = np.array(loss)
+        errors[epoch, :] = [err_x_train, err_x_val, err_y_train, err_y_val, err_theta_train, err_theta_val]
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
             'optimizer': optimizer.state_dict(),  # save optimizer state
-        }, is_best, 'checkpoint_fine.pth.tar')
+            'losses': losses,  # loss in function with epoch
+            'errors': errors,
+            'date_time': date_time,
+        }, is_best, args.results_path+'checkpoint.pth.tar')
+
+        # save classification error/loss
+        if epoch == 0:
+            f_error = open(args.results_path+'error_'+date_time+'.log', 'w')
+            f_error.write('Epoch Training_error_x Training_error_y Training_error_theta'
+                          'Validation_error_x Validation_error_y Validation_error_theta')
+            f_loss = open(args.results_path+'loss_' + date_time + '.log', 'w')
+            f_loss.write('Epoch Training_loss')
+        else:
+            f_error = open(args.results_path+'error_'+date_time+'.log', 'a')
+            f_loss = open(args.results_path+'loss_' + date_time + '.log', 'a')
+
+        f_error.write('\n'+str(epoch)+' '
+                       + str(errors[epoch, 0])+'  '+str(errors[epoch, 1])+'  '
+                       + str(errors[epoch, 2])+'  '+str(errors[epoch, 3])+'  '
+                       + str(errors[epoch, 4])+'  '+str(errors[epoch, 5]))
+        f_loss.write('\n'+str(epoch)+'  '+str(np.array(loss)))
+
+        f_error.close()
+        f_loss.close()
+
+        plt.switch_backend('agg')  # use matplotlib without gui support
+        # plot training loss curve
+        epochs = np.arange(1, epoch+2)
+        fig_loss = plt.figure()
+        plt.grid()
+        plt.plot(epochs, losses[0:epoch+1], 'bo-')
+        plt.xlabel('epoch'); plt.ylabel('loss')
+        plt.title('Training loss value - epoch ')
+        fig_loss.savefig(args.results_path+'fig_train_loss_'+date_time+'.log.eps')
+
+        # plot error curve
+        fig_err = plt.figure()
+        plt.grid()
+        plt.plot(epochs, errors[0:epoch+1, 0], 'ro-',
+                 epochs, errors[0:epoch+1, 1], 'go-',
+                 epochs, errors[0:epoch+1, 2], 'bo-',
+                 epochs, errors[0:epoch+1, 3], 'yo-',
+                 epochs, errors[0:epoch+1, 4], 'ms-',
+                 epochs, errors[0:epoch+1, 5], 'ks-')
+        plt.legend(('train_err_x', 'val_err_x', 'train_err_y', 'val_err_y', 'train_err_theta', 'val_err_theta'),
+                   loc=(0.01, 0.01))
+        plt.xlabel('epoch'); plt.ylabel('train/val errors')
+        plt.title('Training/Validation errors - epoch')
+        fig_err.savefig(args.results_path+'fig_errors_' + date_time + '.log.eps')
+
+        if (epoch+1) % 5 == 1:
+            # every 5 epochs, plot confusion matrix
+            fig_conf_x = plt.figure()
+            ax = fig_conf_x.add_subplot(111)
+            cax = ax.matshow(conf_x.numpy(), vmin=0, vmax=1)
+            fig_conf_x.colorbar(cax)
+            plt.xlabel('predicted class'); plt.ylabel('actual class')
+            plt.title('classification along x')
+            fig_conf_x.savefig(args.results_path+'fig_confusion_x_' + str(epoch + 1) + '.jpg')
+
+            fig_conf_y = plt.figure()
+            ax = fig_conf_y.add_subplot(111)
+            cax = ax.matshow(conf_y.numpy(), vmin=0, vmax=1)
+            fig_conf_y.colorbar(cax)
+            plt.xlabel('predicted class'); plt.ylabel('actual class')
+            plt.title('classification along y')
+            fig_conf_y.savefig(args.results_path+'fig_confusion_y_' + str(epoch + 1) + '.jpg')
+
+            fig_conf_theta = plt.figure()
+            ax = fig_conf_theta.add_subplot(111)
+            cax = ax.matshow(conf_theta.numpy(), vmin=0, vmax=1)
+            fig_conf_theta.colorbar(cax)
+            plt.xlabel('predicted class'); plt.ylabel('actual class')
+            plt.title('classification along theta')
+            fig_conf_theta.savefig(args.results_path+'fig_confusion_theta_' + str(epoch + 1) + '.jpg')
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
-    batch_time = AverageMeter()  # class instance
+    batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    err_x = AverageMeter()
+    err_y = AverageMeter()
+    err_theta = AverageMeter()
 
     model.train()  # switch to training mode
 
@@ -255,6 +353,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # forward pass
         output_x, output_y, output_theta = model(input)
+        output = [output_x, output_y, output_theta]
 
         # sum up losses for different classification task
         loss_x = criterion(output_x, target_x)
@@ -264,13 +363,20 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure average accuracy and record loss
         prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-            accuracy([output_x, output_y, output_theta], target, topk=(1, 5))
+            accuracy(output, target, topk=(1, 5))
         prec1 = (prec1_x + prec1_y + prec1_theta)/3
         prec5 = (prec5_x + prec5_y + prec5_theta)/3
+        err1_x = 100 - prec1_x
+        err1_y = 100 - prec1_y
+        err1_theta = 100 - prec1_theta
 
-        losses.update(global_loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
         top5.update(prec5[0], input.size(0))
+        err_x.update(err1_x[0], input.size(0))
+        err_y.update(err1_y[0], input.size(0))
+        err_theta.update(err1_theta[0], input.size(0))
+
+        losses.update(global_loss.item(), input.size(0))
 
         # compute gradient and do SGD for this mini-batch
         optimizer.zero_grad()
@@ -292,12 +398,21 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 epoch, i, len(train_loader), batch_time=batch_time,
                 data_time=data_time, loss=losses, top1=top1, top5=top5))
 
+    return [err_x.avg, err_y.avg, err_theta.avg, losses.avg]
+
 
 def validate(val_loader, model, criterion):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    err_x = AverageMeter()
+    err_y = AverageMeter()
+    err_theta = AverageMeter()
+
+    # tensors of outputs and targets on whole dataset
+    outputs = torch.zeros([1, sum(args.numClass)], dtype=torch.float, device='cuda:'+str(args.gpu))
+    targets = torch.zeros([1, len(args.numClass)], dtype=torch.long, device='cuda:'+str(args.gpu))
 
     # switch to evaluate mode
     model.eval()
@@ -311,12 +426,15 @@ def validate(val_loader, model, criterion):
             target = target.cuda(args.gpu, non_blocking=True)
 
             target = target.view(-1, 3)
+            targets = torch.cat((targets, target), 0)  # cat new rows
             target_x = target[:, 0]
             target_y = target[:, 1]
             target_theta = target[:, 2]
 
             # forward pass
             output_x, output_y, output_theta = model(input)
+            output = [output_x, output_y, output_theta]
+            outputs = torch.cat((outputs, torch.cat((output_x, output_y, output_theta), 1)), 0)
 
             # sum up losses for different classification task
             loss_x = criterion(output_x, target_x)
@@ -326,13 +444,20 @@ def validate(val_loader, model, criterion):
 
             # measure accuracy and record loss
             prec1_x, prec1_y, prec1_theta, prec5_x, prec5_y, prec5_theta = \
-                accuracy([output_x, output_y, output_theta], target, topk=(1, 5))
+                accuracy(output, target, topk=(1, 5))
             prec1 = (prec1_x + prec1_y + prec1_theta) / 3
             prec5 = (prec5_x + prec5_y + prec5_theta) / 3
+            err1_x = 100 - prec1_x
+            err1_y = 100 - prec1_y
+            err1_theta = 100 - prec1_theta
 
-            losses.update(global_loss.item(), input.size(0))
             top1.update(prec1[0], input.size(0))
             top5.update(prec5[0], input.size(0))
+            err_x.update(err1_x[0], input.size(0))
+            err_y.update(err1_y[0], input.size(0))
+            err_theta.update(err1_theta[0], input.size(0))
+
+            losses.update(global_loss.item(), input.size(0))
 
             # measure ellapsed time
             batch_time.update(time.time() - end)
@@ -350,18 +475,25 @@ def validate(val_loader, model, criterion):
         print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
 
-    return top1.avg
+    outputs = outputs[1:]  # remove init row
+    targets = targets[1:]
+
+    # generate confusion matrix
+    confusion_x, confusion_y, confusion_theta = gen_confusion(outputs, targets)
+
+    return [err_x.avg, err_y.avg, err_theta.avg, top1.avg, confusion_x, confusion_y, confusion_theta]
 
 
 def save_checkpoint(state, is_best, filename):
+    """save state and best model ever"""
     torch.save(state, filename)
     if is_best:  # store model with best perf
-        shutil.copyfile(filename, 'model_best_fine.path.tar')
+        shutil.copyfile(filename, args.results_path+'model_best.path.tar')
 
 
 def adjust_learning_rate(optimizer, epoch):
     """set learning rate dynamic to epoch"""
-    # lr = agrs.lr * (0.1**(epoch//30))  # decay by 10 per 30 epochs
+    # lr = args.lr * (0.1**(epoch//30))  # decay by 10 per 30 epochs
     for param_group in optimizer.param_groups:
         param_group['lr'] = args.lr  # fixed lr
 
@@ -382,7 +514,7 @@ def accuracy(output, target, topk=(1,)):
         output_y = output[1]
         output_theta = output[2]
 
-        _, pred_x = output_x.topk(maxk, 1, True, True)  # output value and indices
+        _, pred_x = output_x.topk(maxk, 1, True, True)  # predicted value and indices
         _, pred_y = output_y.topk(maxk, 1, True, True)
         _, pred_theta = output_theta.topk(maxk, 1, True, True)
 
@@ -405,6 +537,51 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k_theta.mul_(100 / batch_size))
 
         return res
+
+
+def gen_confusion(outputs, targets):
+    """generate confusion matrix for x, y and theta"""
+    confusion_x = torch.zeros(args.numClass[0], args.numClass[0])
+    confusion_y = torch.zeros(args.numClass[1], args.numClass[1])
+    confusion_theta = torch.zeros(args.numClass[2], args.numClass[2])
+
+    # split groundtruth to groundtruth for x, y and theta(to modify)
+    target_x = targets[:, 0]
+    target_y = targets[:, 1]
+    target_theta = targets[:, 2]
+
+    # split output to outputs for x, y and theta(to modify)
+    output_x = outputs[:, 0:args.numClass[0]]
+    output_y = outputs[:, args.numClass[0]:(args.numClass[0]+args.numClass[1])]
+    output_theta = outputs[:, (args.numClass[0]+args.numClass[1]):]
+
+    _, pred_x = output_x.topk(1, 1, True, True)  # predicted class indices
+    _, pred_y = output_y.topk(1, 1, True, True)
+    _, pred_theta = output_theta.topk(1, 1, True, True)
+
+    for i in range(0, targets.size(0)):  # each row represents a ground-truth class
+        confusion_x[target_x[i], pred_x[i]] += 1
+        confusion_y[target_y[i], pred_y[i]] += 1
+        confusion_theta[target_theta[i], pred_theta[i]] += 1
+
+    for i in range(0, args.numClass[0]):
+        if confusion_x[i].sum() == 0:
+            confusion_x[i] = 0
+        else:
+            confusion_x[i] = confusion_x[i] / confusion_x[i].sum()
+
+        if confusion_x[i].sum() == 0:
+            confusion_y[i] = 0
+        else:
+            confusion_y[i] = confusion_y[i] / confusion_y[i].sum()
+
+    for i in range(0, args.numClass[2]):
+        if confusion_theta[i].sum() == 0:
+            confusion_theta[i] = 0
+        else:
+            confusion_theta[i] = confusion_theta[i] / confusion_theta[i].sum()
+
+    return [confusion_x, confusion_y, confusion_theta]
 
 
 class BlockDataset(Dataset):
@@ -453,7 +630,7 @@ class AverageMeter(object):
 
 
 class ConcatTable(nn.Module):
-    """Define ConcatTable module in pytorch """
+    """Define ConcatTable module for parallel FC layers"""
     def __init__(self, out_x, out_y, out_theta):
         super(ConcatTable, self).__init__()
         self.FC_x = nn.Linear(512, out_x)
@@ -461,7 +638,7 @@ class ConcatTable(nn.Module):
         self.FC_theta = nn.Linear(512, out_theta)
 
     def forward(self, x):
-        x = x.view(-1, 512*1*1)  # reshape x to a vector
+        x = x.view(-1, 512*1*1)
         out = [self.FC_x(x), self.FC_y(x), self.FC_theta(x)]
         return out
 
