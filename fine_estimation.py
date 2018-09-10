@@ -42,6 +42,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/',
                     type=str, help='directory containing dataset csv files')
+parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration name')
 parser.add_argument('--results_path', default='fine_estimation/', type=str,
                     help='directory for results storage')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
@@ -52,7 +53,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -182,8 +183,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + '2018_01_15-13_59-data-2-2-2_train.txt'
-    csv_val = args.csv_path + '2018_01_15-13_59-data-2-2-2_val.txt'
+    csv_train = args.csv_path + args.dataset_name + '_train.txt'
+    csv_val = args.csv_path + args.dataset_name + '_val.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],

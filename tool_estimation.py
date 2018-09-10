@@ -43,6 +43,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/'
                                           'UnrealData/scenario_toolDetectionV3.1/',
                     type=str, help='directory containing dataset csv files')
+parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration file')
 parser.add_argument('-j', '--workers', default=2, type=int, help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=40, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -180,8 +181,8 @@ def main():
     # dataset settings
     # load dataset configurations from csv files
     csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_toolDetectionV3.1/'
-    csv_train = csv_dir + '2018_02_22-20_17-data-0.02-0_train.txt'
-    csv_val = csv_dir + '2018_02_22-20_17-data-0.02-0_val.txt'
+    csv_train = csv_dir + args.dataset_name + '_train.txt'
+    csv_val = csv_dir + args.dataset_name + '_val.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],

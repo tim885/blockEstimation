@@ -1,19 +1,19 @@
 -- read .t7 type dataset configuration file and store it
 
-file = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5.t7'
+file = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_L/2017_09_20-13_32-data-5-5-5.t7'
 dataset = torch.load(file)
 
 tClasses = dataset['train']['imageClasses']
 tpaths = dataset['train']['imagePath']
-tpaths = tpaths[{{},{1,103}}] -- reject last code number
+tpaths = tpaths[{{},{1,99}}] -- reject last code number, 103 for LV3.1
 vClasses = dataset['val']['imageClasses']
 vpaths =dataset['val']['imagePath']
-vpaths = vpaths[{{},{1,103}}]
+vpaths = vpaths[{{},{1,99}}]
 -- local trainPaths = tpath:narrow(1,1,15)
 
 -- convert charTensor to string and write in dataset csv file
 -- training set
-file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_train.txt", "w")
+file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_L/2017_09_20-13_32-data-5-5-5_train.txt", "w")
 
 file:write("image_name,block_x,block_y,block_theta","\n")
 
@@ -32,7 +32,7 @@ end
 io.close(file)
 
 -- validation set 
-file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/2018_01_30-10_21-data-5-5-5_val.txt", "w")
+file = io.open("/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_L/2017_09_20-13_32-data-5-5-5_val.txt", "w")
 file:write("image_name,block_x,block_y,block_theta","\n")
 
 for i=1, vpaths:size(1) do -- vpaths:size(1)

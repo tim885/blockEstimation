@@ -42,6 +42,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/',
                     type=str, help='directory containing dataset csv files')
+parser.add_argument('--dataset_name', default='', type=str, help='dataset name')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=140, type=int, metavar='N',
@@ -76,7 +77,7 @@ parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
-parser.add_argument('--numClass', default=[202, 202, 36], type=int,
+parser.add_argument('--numClass', default=[202, 202, 36], type=list,
                     help='number of class for each classification task')
 parser.add_argument('--vis', default=True, type=bool,
                     help='whether visualize training and validation')
@@ -180,9 +181,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/'
-    csv_train = csv_dir + '2018_01_30-10_21-data-5-5-5_train.txt'
-    csv_val = csv_dir + '2018_01_30-10_21-data-5-5-5_val.txt'
+    csv_train = args.csv_path + args.dataset_name + '_train.txt'
+    csv_val = args.csv_path + args.dataset_name + '_val.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -609,6 +609,8 @@ class BlockDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
+        image = image[0:3,:,:]
+        
         # sample = {'image': image, 'label': label}
         sample = (image, label)
 
