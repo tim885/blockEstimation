@@ -42,7 +42,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='', type=str, help='dataset name')
+parser.add_argument('--dataset_name', default='2018_01_30-10_21-data-5-5-5', type=str, help='dataset name')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=140, type=int, metavar='N',
@@ -148,7 +148,8 @@ def main():
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+                                weight_decay=args.weight_decay,
+                                nesterov=True)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -187,13 +188,22 @@ def main():
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
+    imagenet_pca = {
+        'eigval':torch.Tensor([0.2175, 0.0188, 0.0045]),
+        'eigvec':torch.Tensor([[-0.5675, 0.7192, 0.4009],
+                               [-0.5808, -0.0045, -0.8140],
+                               [-0.5836, -0.6948, 0.4203],
+                               ])
+    }
 
     # composition of transforms without horizontal flip(localization issue)
     transform_train = transforms.Compose([transforms.Resize((256, 256)),
                                           transforms.RandomResizedCrop(224,
                                                                        scale=(0.25, 1.0),
                                                                        ratio=(0.909, 1.1)),
+                                          transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                                           transforms.ToTensor(),
+                                          TransLightning(0.1, imagenet_pca['eigval'], imagenet_pca['eigvec']),
                                           normalize])
 
     transform_val = transforms.Compose([transforms.Resize((256, 256)),
@@ -609,12 +619,31 @@ class BlockDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        image = image[0:3,:,:]
+        # image = image[0:3,:,:]
         
         # sample = {'image': image, 'label': label}
         sample = (image, label)
 
         return sample
+
+
+class TransLightning(object):
+    """Lighting noise transform(AlexNet-style PCA-based noise)"""
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = eigval
+        self.eigvec = eigvec
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone()\
+            .mul(alpha.view(1,3).expand(3,3))\
+            .mul(self.eigval.view(1,3).expand(3,3))\
+            .sum(1).squeeze()
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
 class AverageMeter(object):
