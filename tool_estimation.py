@@ -212,8 +212,13 @@ def main():
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluation mode
-        validate(val_loader, model, criterion)
+    # evaluation mode
+    if args.evaluate:
+        err_x_val, err_y_val, prec1, conf_x, conf_y = validate(val_loader, model, criterion)
+
+        # here to add code for visualization as training does
+
+        print('test is finished')
         return
 
     # initialize visdom plot tool

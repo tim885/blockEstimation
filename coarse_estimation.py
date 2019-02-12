@@ -61,7 +61,7 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',  # validation mode
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
@@ -117,7 +117,7 @@ def main():
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]() # load relevant architecture in torchvision
 
-    # replace FC layers of resnet with paradllel FC layers
+    # replace FC layers of resnet with parallel FC layers
     model = nn.Sequential(*list(model.children())[:-1])  # remove FC layer and store in nn.Sequential container
 
     # add concatenated FC module for classification of x,y and theta
@@ -151,7 +151,7 @@ def main():
                                 weight_decay=args.weight_decay,
                                 nesterov=True)
 
-    # optionally resume from a checkpoint
+    # optionally resume from a checkpoint with trained model
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -230,11 +230,14 @@ def main():
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluation mode
-        validate(val_loader, model, criterion)
-        return
+    # evaluation mode
+    if args.evaluate:
+        err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
 
-    # initialize visdom plot tool
+        # here to add code for visualization as training does
+
+        print('test is finished')
+        return
 
     # runtime for training
     for epoch in range(args.start_epoch, args.epochs):
