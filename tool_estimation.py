@@ -12,6 +12,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
@@ -180,9 +182,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_toolDetectionV3.1/'
-    csv_train = csv_dir + args.dataset_name + '_train.txt'
-    csv_val = csv_dir + args.dataset_name + '_val.txt'
+    csv_train = args.csv_path + args.dataset_name + '_train.txt'
+    csv_val = args.csv_path + args.dataset_name + '_val.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -214,14 +215,13 @@ def main():
 
     # evaluation mode
     if args.evaluate:
+        print('evaluation mode')
         err_x_val, err_y_val, prec1, conf_x, conf_y = validate(val_loader, model, criterion)
 
         # here to add code for visualization as training does
 
         print('test is finished')
         return
-
-    # initialize visdom plot tool
 
     # runtime for training
     for epoch in range(args.start_epoch, args.epochs):
@@ -272,7 +272,7 @@ def main():
         f_error.close()
         f_loss.close()
 
-        plt.switch_backend('agg')  # use matplotlib without gui support
+        # plt.switch_backend('agg')  # use matplotlib without gui support
         # plot training loss curve
         epochs = np.arange(1, epoch+2)
         fig_loss = plt.figure()

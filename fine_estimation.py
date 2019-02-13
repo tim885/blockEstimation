@@ -12,6 +12,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
@@ -30,8 +32,8 @@ import torchvision.models as models
 
 # return sorted list from the items in iterable
 model_names = sorted(name for name in models.__dict__
-                    if name.islower() and not name.startswith("__")
-                    and callable(models.__dict__[name]))
+                     if name.islower() and not name.startswith("__")
+                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
 parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose fine estmation')
@@ -42,7 +44,7 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
 parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration name')
+parser.add_argument('--dataset_name', default='2018_01_15-13_59-data-2-2-2', type=str, help='dataset configuration name')
 parser.add_argument('--results_path', default='fine_estimation/', type=str,
                     help='directory for results storage')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
@@ -51,7 +53,7 @@ parser.add_argument('--epochs', default=201, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=128, type=int,
+parser.add_argument('-b', '--batch-size', default=32, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
@@ -64,13 +66,13 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
 parser.add_argument('--resume', default='fine_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')  # dest; action
+                    help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
                     help='number of distributed processes')
 parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-                    help='url used to set up distributed training') # for multi-gpu training
+                    help='url used to set up distributed training')  # for multi-gpu training
 parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
@@ -224,6 +226,7 @@ def main():
 
     # evaluation mode
     if args.evaluate:
+        print('evaluation mode')
         err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
 
         # here to add code for visualization as training does
@@ -283,7 +286,7 @@ def main():
         f_error.close()
         f_loss.close()
 
-        plt.switch_backend('agg')  # use matplotlib without gui support
+        # plt.switch_backend('agg')  # use matplotlib without gui support
         # plot training loss curve
         epochs = np.arange(1, epoch+2)
         fig_loss = plt.figure()
@@ -611,7 +614,7 @@ class BlockDataset(Dataset):
         label = self.samples.iloc[idx, 1:].values
         label = label.astype('float').reshape(-1, 3)  # 1*3 narray
         label = torch.from_numpy(label)
-        label = label.long() - 1  # lua index begins at 1
+        label = label.long() - 1  # csv class index begins with 1
 
         if self.transform:
             image = self.transform(image)

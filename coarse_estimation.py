@@ -12,6 +12,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
@@ -232,6 +234,7 @@ def main():
 
     # evaluation mode
     if args.evaluate:
+        print('evaluation mode')
         err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
 
         # here to add code for visualization as training does
@@ -289,7 +292,7 @@ def main():
         f_error.close()
         f_loss.close()
 
-        plt.switch_backend('agg')  # use matplotlib without gui support
+        # plt.switch_backend('agg')  # use matplotlib without gui support
         # plot training loss curve
         epochs = np.arange(1, epoch+2)
         fig_loss = plt.figure()
