@@ -1,7 +1,5 @@
-# transfer learning script for block pose(x,y,theta) fine estimation
+# code for block pose(x,y,theta) fine estimation
 # originally implemented with Torch by Vianney Loing
-# derived from pytorch/examples/imagenet
-#
 # created by QIU Xuchong
 # 2018/07
 
@@ -36,15 +34,15 @@ model_names = sorted(name for name in models.__dict__
                      and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose fine estmation')
+parser = argparse.ArgumentParser(description='code for block pose fine estimation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/',
+parser.add_argument('--csv_path', default='',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='2018_01_15-13_59-data-2-2-2', type=str, help='dataset configuration name')
+parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration name')
 parser.add_argument('--results_path', default='fine_estimation/', type=str,
                     help='directory for results storage')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
@@ -63,7 +61,7 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='fine_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
@@ -185,8 +183,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + args.dataset_name + '_train.txt'
-    csv_val = args.csv_path + args.dataset_name + '_val.txt'
+    csv_train = args.csv_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.csv_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],

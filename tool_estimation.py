@@ -1,7 +1,5 @@
-# transfer learning script for robot tool estimation
+# code for robot tool estimation
 # originally implemented with Torch by Vianney Loing
-# derived from pytorch/examples/imagenet
-#
 # created by QIU Xuchong
 # 2018/08
 
@@ -36,14 +34,13 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for robot tool position estmation')
+parser = argparse.ArgumentParser(description='Pytorch code for robot tool position estimation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/'
-                                          'UnrealData/scenario_toolDetectionV3.1/',
+parser.add_argument('--csv_path', default='',
                     type=str, help='directory containing dataset csv files')
 parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration file')
 parser.add_argument('-j', '--workers', default=2, type=int, help='number of data loading workers (default: 2)')
@@ -61,7 +58,7 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='tool_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
@@ -182,8 +179,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + args.dataset_name + '_train.txt'
-    csv_val = args.csv_path + args.dataset_name + '_val.txt'
+    csv_train = args.csv_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.csv_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -479,7 +476,7 @@ def adjust_learning_rate(optimizer, epoch):
 
 
 def accuracy(output, target, topk=(1,)):
-    """Compute accuracy for x,y,theta seperately"""
+    """Compute accuracy for x,y,theta separately"""
     with torch.no_grad():  # no grad computation to reduce memory
         maxk = max(topk)  # topk = (1,5)
         batch_size = target.size(0)
