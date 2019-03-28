@@ -1,5 +1,5 @@
 # blockEstimation
-This repository contains the test codes implemented with PyTorch for the paper [Virtual Training for a Real Application: Accurate Object-Robot Relative Localization without Calibration](http://imagine.enpc.fr/~loingvi/unloc/).The running environment is Python3.6 with PyTorch 0.4 framework. 
+This repository contains the train/test code implemented with PyTorch for the paper [Virtual Training for a Real Application: Accurate Object-Robot Relative Localization without Calibration](http://imagine.enpc.fr/~loingvi/unloc/).The running environment is Python3.6 with PyTorch 0.4 framework. 
 
 ## required packages
 numpy  
@@ -35,5 +35,9 @@ To test model on real data (with view aggregation), change PATH_TO_DATASETS and 
 python coarse_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/' --model '/DIRECTORY_PATH/coarse_estimation/model_best.path.tar'
 python fine_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/' --model '/DIRECTORY_PATH/fine_estimation/checkpoint_192.pth.tar' 
 
+## Author
+### Xuchong Qiu
+### Vianney Loing 
+
 ## Acknowledgement
-The original test code is implemented by Vianney Loing with Torch and this is a PyTorch version of it. Some parts of the code come from  [PyTorch official example code](https://github.com/pytorch/examples/tree/master/imagenet).
+The original train/test code is implemented by Vianney Loing with Torch and this is a PyTorch version of it. Some parts of the code come from  [PyTorch official example code](https://github.com/pytorch/examples/tree/master/imagenet).
