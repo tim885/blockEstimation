@@ -15,7 +15,6 @@ mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
-
 import torch
 import torch.nn as nn
 import torch.nn.parallel
