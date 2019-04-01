@@ -16,8 +16,9 @@ can be downloaded [here](https://zenodo.org/record/2563622#.XJ0CYB2nGbk).
 CAD models of the ABB IRB120 robot are available on this [page](https://new.abb.com/products/robotics/industrial-robots
 /irb-120/irb-120-cad).
 
-Clamp 3D models are available here: [[clamp.stl]](http://imagine.enpc.fr/~loingvi/unloc/clamp.stl)[[clamp.3ds]]
-(http://imagine.enpc.fr/~loingvi/unloc/clamp.3ds)[[clamp.obj]](http://imagine.enpc.fr/~loingvi/unloc/clamp.obj)
+Clamp 3D models are available here: [[clamp.stl]](http://imagine.enpc.fr/~loingvi/unloc/clamp.stl)
+[[clamp.3ds]](http://imagine.enpc.fr/~loingvi/unloc/clamp.3ds)
+[[clamp.obj]](http://imagine.enpc.fr/~loingvi/unloc/clamp.obj)
 
 Trained models on synthetic dataset and relevant log files should be stored in coarse_estimation/fine_estimation/
 tool_estimation folders. Please download trained models [here](https://drive.google.com/drive/folders/1GkrOTrt3pOo5A7OTzv7_Rg2-l0mtDOqh?usp=sharing)  
@@ -39,9 +40,9 @@ th inspect_t7_tool.lua
 To test model on real data (with view aggregation), download real dataset 
 and save in data/real/ folder, change PATH_TO_DATASETS and 
 DIRECTORY_PATH in the following commands and run:  
-python coarse_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/' 
+python coarse_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/'
 --model '/DIRECTORY_PATH/coarse_estimation/model_best.path.tar'  
-python fine_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/' 
+python fine_validation.py --dataset '/PATH_TO_DATASETS/UnLoc_Lab_Dataset/'  
 --model '/DIRECTORY_PATH/fine_estimation/model_best.path.tar' 
 
 ## Author
