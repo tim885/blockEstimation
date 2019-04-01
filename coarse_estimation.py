@@ -10,12 +10,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
-import matplotlib as mpl
-mpl.use('TkAgg')  # when no GUI is available
-import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
-
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -27,6 +23,9 @@ import torch.utils.data.distributed
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import torchvision.models as models
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
+import matplotlib.pyplot as plt  # for visualization
 
 # return sorted list from the items in iterable
 model_names = sorted(name for name in models.__dict__
