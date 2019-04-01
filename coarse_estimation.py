@@ -39,9 +39,9 @@ parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='',
-                    type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='', type=str, help='dataset name')
+parser.add_argument('--dataset_path', default='',
+                    type=str, help='directory containing dataset csv files and pictures folders')
+parser.add_argument('--dataset_name', default='data', type=str, help='dataset name')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=140, type=int, metavar='N',
@@ -181,8 +181,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + 'train_' + args.dataset_name + '.txt'
-    csv_val = args.csv_path + 'validation_' + args.dataset_name + '.txt'
+    csv_train = args.dataset_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.dataset_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -289,7 +289,7 @@ def main():
         f_error.close()
         f_loss.close()
 
-        # plt.switch_backend('agg')  # use matplotlib without gui support
+        plt.switch_backend('agg')  # use matplotlib without gui support
         # plot training loss curve
         epochs = np.arange(1, epoch+2)
         fig_loss = plt.figure()
@@ -611,7 +611,7 @@ class BlockDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path = self.samples.iloc[idx, 0]
+        img_path = args.dataset_path + self.samples.iloc[idx, 0]
         # image = io.imread(img_path)
         image = Image.open(img_path)
         label = self.samples.iloc[idx, 1:].values
