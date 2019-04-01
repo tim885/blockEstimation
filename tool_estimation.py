@@ -1,7 +1,5 @@
-# transfer learning script for robot tool estimation
+# code for robot tool estimation
 # originally implemented with Torch by Vianney Loing
-# derived from pytorch/examples/imagenet
-#
 # created by QIU Xuchong
 # 2018/08
 
@@ -12,10 +10,11 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
-
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -34,16 +33,15 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for robot tool position estmation')
+parser = argparse.ArgumentParser(description='Pytorch code for robot tool position estimation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/'
-                                          'UnrealData/scenario_toolDetectionV3.1/',
-                    type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration file')
+parser.add_argument('--dataset_path', default='',
+                    type=str, help='directory containing dataset csv files and pictures folders')
+parser.add_argument('--dataset_name', default='data', type=str, help='dataset configuration file')
 parser.add_argument('-j', '--workers', default=2, type=int, help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=40, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -59,7 +57,7 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='tool_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
@@ -180,21 +178,34 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_dir = '/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_toolDetectionV3.1/'
-    csv_train = csv_dir + args.dataset_name + '_train.txt'
-    csv_val = csv_dir + args.dataset_name + '_val.txt'
+    csv_train = args.dataset_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.dataset_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])  #
 
-    # composition of transforms without horizontal flip(localization issue)
-    transform = transforms.Compose([transforms.Resize((224, 224)),  # fix input size
-                                    transforms.ToTensor(),
-                                    normalize])
+    imagenet_pca = {
+        'eigval': torch.Tensor([0.2175, 0.0188, 0.0045]),
+        'eigvec': torch.Tensor([[-0.5675, 0.7192, 0.4009],
+                                [-0.5808, -0.0045, -0.8140],
+                                [-0.5836, -0.6948, 0.4203],
+                                ])
+    }
 
-    train_dataset = BlockDataset(csv_file=csv_train, transform=transform)
-    val_dataset = BlockDataset(csv_file=csv_val, transform=transform)
+    # composition of transforms without horizontal flip(localization issue)
+    transform_train = transforms.Compose([transforms.Resize((224, 224)),
+                                          transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+                                          transforms.ToTensor(),
+                                          TransLightning(0.1, imagenet_pca['eigval'], imagenet_pca['eigvec']),
+                                          normalize])
+
+    transform_val = transforms.Compose([transforms.Resize((224, 224)),  # fix input size
+                                        transforms.ToTensor(),
+                                        normalize])
+
+    train_dataset = BlockDataset(csv_file=csv_train, transform=transform_val)
+    val_dataset = BlockDataset(csv_file=csv_val, transform=transform_val)
 
     # define sampler for data fetching distributed training
     if args.distributed:
@@ -212,11 +223,15 @@ def main():
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluation mode
-        validate(val_loader, model, criterion)
-        return
+    # evaluation mode
+    if args.evaluate:
+        print('evaluation mode')
+        err_x_val, err_y_val, prec1, conf_x, conf_y = validate(val_loader, model, criterion)
 
-    # initialize visdom plot tool
+        # here to add code for visualization as training does
+
+        print('test is finished')
+        return
 
     # runtime for training
     for epoch in range(args.start_epoch, args.epochs):
@@ -474,7 +489,7 @@ def adjust_learning_rate(optimizer, epoch):
 
 
 def accuracy(output, target, topk=(1,)):
-    """Compute accuracy for x,y,theta seperately"""
+    """Compute accuracy for x,y,theta separately"""
     with torch.no_grad():  # no grad computation to reduce memory
         maxk = max(topk)  # topk = (1,5)
         batch_size = target.size(0)
@@ -551,7 +566,7 @@ class BlockDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path = self.samples.iloc[idx, 0]
+        img_path = args.dataset_path + self.samples.iloc[idx, 0]
         # image = io.imread(img_path)
         image = Image.open(img_path)
         label = self.samples.iloc[idx, 1:].values
@@ -566,6 +581,25 @@ class BlockDataset(Dataset):
         sample = (image, label)
 
         return sample
+
+
+class TransLightning(object):
+    """Lighting noise transform(AlexNet-style PCA-based noise)"""
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = eigval
+        self.eigvec = eigvec
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone()\
+            .mul(alpha.view(1,3).expand(3,3))\
+            .mul(self.eigval.view(1,3).expand(3,3))\
+            .sum(1).squeeze()
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
 class AverageMeter(object):

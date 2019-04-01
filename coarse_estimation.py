@@ -1,7 +1,5 @@
-# transfer learning script for block pose(x,y,theta) coarse estimation
+# code for block pose(x,y,theta) coarse estimation
 # originally implemented with Torch by Vianney Loing
-# derived from pytorch/examples/imagenet
-#
 # created by QIU Xuchong
 # 2018/07
 
@@ -12,10 +10,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
-import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
-
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -27,6 +23,9 @@ import torch.utils.data.distributed
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 import torchvision.models as models
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
+import matplotlib.pyplot as plt  # for visualization
 
 # return sorted list from the items in iterable
 model_names = sorted(name for name in models.__dict__
@@ -34,15 +33,15 @@ model_names = sorted(name for name in models.__dict__
                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose coarse estmation')
+parser = argparse.ArgumentParser(description='Pytorch code for block pose coarse estmation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_LV3.1/',
-                    type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='2018_01_30-10_21-data-5-5-5', type=str, help='dataset name')
+parser.add_argument('--dataset_path', default='',
+                    type=str, help='directory containing dataset csv files and pictures folders')
+parser.add_argument('--dataset_name', default='data', type=str, help='dataset name')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
 parser.add_argument('--epochs', default=140, type=int, metavar='N',
@@ -61,7 +60,7 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
+parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',  # validation mode
                     help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
@@ -117,7 +116,7 @@ def main():
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]() # load relevant architecture in torchvision
 
-    # replace FC layers of resnet with paradllel FC layers
+    # replace FC layers of resnet with parallel FC layers
     model = nn.Sequential(*list(model.children())[:-1])  # remove FC layer and store in nn.Sequential container
 
     # add concatenated FC module for classification of x,y and theta
@@ -151,7 +150,7 @@ def main():
                                 weight_decay=args.weight_decay,
                                 nesterov=True)
 
-    # optionally resume from a checkpoint
+    # optionally resume from a checkpoint with trained model
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -182,8 +181,8 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + args.dataset_name + '_train.txt'
-    csv_val = args.csv_path + args.dataset_name + '_val.txt'
+    csv_train = args.dataset_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.dataset_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -230,11 +229,15 @@ def main():
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluation mode
-        validate(val_loader, model, criterion)
-        return
+    # evaluation mode
+    if args.evaluate:
+        print('evaluation mode')
+        err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
 
-    # initialize visdom plot tool
+        # here to add code for visualization as training does
+
+        print('test is finished')
+        return
 
     # runtime for training
     for epoch in range(args.start_epoch, args.epochs):
@@ -608,7 +611,7 @@ class BlockDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path = self.samples.iloc[idx, 0]
+        img_path = args.dataset_path + self.samples.iloc[idx, 0]
         # image = io.imread(img_path)
         image = Image.open(img_path)
         label = self.samples.iloc[idx, 1:].values

@@ -1,7 +1,5 @@
-# transfer learning script for block pose(x,y,theta) fine estimation
+# code for block pose(x,y,theta) fine estimation
 # originally implemented with Torch by Vianney Loing
-# derived from pytorch/examples/imagenet
-#
 # created by QIU Xuchong
 # 2018/07
 
@@ -12,6 +10,8 @@ import random
 import shutil  # high-level file operations
 import pandas as pd  # easy csv parsing
 import numpy as np
+import matplotlib as mpl
+mpl.use('TkAgg')  # when no GUI is available
 import matplotlib.pyplot as plt  # for visualization
 import time
 import warnings
@@ -30,19 +30,19 @@ import torchvision.models as models
 
 # return sorted list from the items in iterable
 model_names = sorted(name for name in models.__dict__
-                    if name.islower() and not name.startswith("__")
-                    and callable(models.__dict__[name]))
+                     if name.islower() and not name.startswith("__")
+                     and callable(models.__dict__[name]))
 
 # command-line interface arguments
-parser = argparse.ArgumentParser(description='Pytorch transfer learning for block pose fine estmation')
+parser = argparse.ArgumentParser(description='code for block pose fine estimation')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')  # dataset dir argument
 parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet18',
                     choices=model_names, help='model_architecture: ' +
                     ' | '.join(model_names) +
                     ' (default:resnet18)')  # {--arch | -a} argument 'arch' is added
-parser.add_argument('--csv_path', default='/home/xuchong/ssd/Projects/block_estimation/DATA/UnrealData/scenario_PV3.1/',
+parser.add_argument('--dataset_path', default='',
                     type=str, help='directory containing dataset csv files')
-parser.add_argument('--dataset_name', default='', type=str, help='dataset configuration name')
+parser.add_argument('--dataset_name', default='data', type=str, help='dataset configuration name')
 parser.add_argument('--results_path', default='fine_estimation/', type=str,
                     help='directory for results storage')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
@@ -51,7 +51,7 @@ parser.add_argument('--epochs', default=201, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=128, type=int,
+parser.add_argument('-b', '--batch-size', default=32, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
@@ -61,21 +61,21 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')  # for runtime surveillance
-parser.add_argument('--resume', default='fine_estimation/checkpoint.pth.tar', type=str, metavar='PATH',
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')  # resume mode
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')  # dest; action
+                    help='evaluate model on validation set')
 parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
 parser.add_argument('--world-size', default=1, type=int,
                     help='number of distributed processes')
 parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-                    help='url used to set up distributed training') # for multi-gpu training
+                    help='url used to set up distributed training')  # for multi-gpu training
 parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')  # seed for random init
-parser.add_argument('--gpu', default=1, type=int,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--cpu', default=False, type=bool,
                     help='whether only use cpu.')
@@ -183,19 +183,29 @@ def main():
 
     # dataset settings
     # load dataset configurations from csv files
-    csv_train = args.csv_path + args.dataset_name + '_train.txt'
-    csv_val = args.csv_path + args.dataset_name + '_val.txt'
+    csv_train = args.dataset_path + 'train_' + args.dataset_name + '.txt'
+    csv_val = args.dataset_path + 'validation_' + args.dataset_name + '.txt'
 
     # imagenet statistics
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
+
+    imagenet_pca = {
+        'eigval': torch.Tensor([0.2175, 0.0188, 0.0045]),
+        'eigvec': torch.Tensor([[-0.5675, 0.7192, 0.4009],
+                                [-0.5808, -0.0045, -0.8140],
+                                [-0.5836, -0.6948, 0.4203],
+                                ])
+    }
 
     # composition of transforms without horizontal flip(localization issue)
     transform_train = transforms.Compose([transforms.Resize((256, 256)),
                                           transforms.RandomResizedCrop(224,
                                                                        scale=(0.25, 1.0),
                                                                        ratio=(0.909, 1.1)),
+                                          transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                                           transforms.ToTensor(),
+                                          TransLightning(0.1, imagenet_pca['eigval'], imagenet_pca['eigvec']),
                                           normalize])
 
     transform_val = transforms.Compose([transforms.Resize((256, 256)),
@@ -222,8 +232,14 @@ def main():
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:  # evaluation mode
-        validate(val_loader, model, criterion)
+    # evaluation mode
+    if args.evaluate:
+        print('evaluation mode')
+        err_x_val, err_y_val, err_theta_val, prec1, conf_x, conf_y, conf_theta = validate(val_loader, model, criterion)
+
+        # here to add code for visualization as training does
+
+        print('test is finished')
         return
 
     # initialize visdom plot tool
@@ -600,13 +616,13 @@ class BlockDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path = self.samples.iloc[idx, 0]
+        img_path = args.dataset_path + self.samples.iloc[idx, 0]
         # image = io.imread(img_path)
         image = Image.open(img_path)
         label = self.samples.iloc[idx, 1:].values
         label = label.astype('float').reshape(-1, 3)  # 1*3 narray
         label = torch.from_numpy(label)
-        label = label.long() - 1  # lua index begins at 1
+        label = label.long() - 1  # csv class index begins with 1
 
         if self.transform:
             image = self.transform(image)
@@ -615,6 +631,25 @@ class BlockDataset(Dataset):
         sample = (image, label)
 
         return sample
+
+
+class TransLightning(object):
+    """Lighting noise transform(AlexNet-style PCA-based noise)"""
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = eigval
+        self.eigvec = eigvec
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = self.eigvec.type_as(img).clone()\
+            .mul(alpha.view(1,3).expand(3,3))\
+            .mul(self.eigval.view(1,3).expand(3,3))\
+            .sum(1).squeeze()
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
 class AverageMeter(object):
