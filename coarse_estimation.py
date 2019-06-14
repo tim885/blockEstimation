@@ -521,7 +521,7 @@ def accuracy(output, target, topk=(1,)):
         maxk = max(topk)  # topk = (1,5)
         batch_size = target.size(0)
 
-        # split groundtruth to groundtruth for x, y and theta(to modify)
+        # split ground truth to ground truth for x, y and theta(to modify)
         target_x = target[:, 0]
         target_y = target[:, 1]
         target_theta = target[:, 2]
@@ -669,11 +669,11 @@ class AverageMeter(object):
 
 class ConcatTable(nn.Module):
     """Define ConcatTable module for parallel FC layers"""
-    def __init__(self, out_x, out_y, out_theta):
+    def __init__(self, out_x_sz, out_y_sz, out_theta_sz):
         super(ConcatTable, self).__init__()
-        self.FC_x = nn.Linear(512, out_x)
-        self.FC_y = nn.Linear(512, out_y)
-        self.FC_theta = nn.Linear(512, out_theta)
+        self.FC_x = nn.Linear(512, out_x_sz)
+        self.FC_y = nn.Linear(512, out_y_sz)
+        self.FC_theta = nn.Linear(512, out_theta_sz)
 
     def forward(self, x):
         x = x.view(-1, 512*1*1)
